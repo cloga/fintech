@@ -180,8 +180,8 @@ for i in data_delta_raw.columns[:-1]:
     stock = {}
     stock['name'] = codes[i] + '-(' + i + ')'
     stock['r'] = data_delta_raw['SH000001'].corr(data_delta_raw[i])
-    stock['beta_overall'] = data_delta_raw[i].std() / data_delta_raw['SH000001'].std()
-    stock['beta'] = stock['r'] * stock['beta_overall']
+    stock['beta_overall'] = data_delta_raw[i].std() ** 2 / data_delta_raw['SH000001'].std() ** 2
+    stock['beta'] = stock['r'] * stock['beta_overall'] ** 0.5
     data_beta.append(stock)
 
 data_beta = pd.DataFrame(data_beta)
