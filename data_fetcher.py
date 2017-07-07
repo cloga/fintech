@@ -4,10 +4,6 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 import re
-import datetime
-from functools import reduce
-from config import *
-now_time = datetime.datetime.now()
 
 def get_fund_histdata(fund_code):
     # 给定基金代码抓取历史数据
@@ -61,59 +57,23 @@ def get_fund_currdata(fund_code):
     fund_data['delta'] = float(price) - float(previous_value)
     return fund_data
 
+def get_hist_raw_data_equity(codes, start, end):
+    data_list = []
+    for k,v in codes.items():
+        data_hist = ts.get_k_data(code= k, ktype='M', start=start, end=end)[['date', 'close']]
+        data_hist.columns = ['date', k]
+        data_list.append(data_hist)
 
+    data_index = ts.get_k_data('000001', index=True, ktype='M', start=start, end=end)[['date', 'close']]
+    data_index.columns = ['date', 'SH000001']
+    data_list.append(data_index)
+    data = reduce(lambda x,y: pd.merge(x, y, on='date', how='left'), data_list)
+    data = data.fillna(method='ffill')
+    data = data.set_index('date')
 
-fund_currlist = []
-
-for f in audit_list:
-    fund_currlist.append(get_fund_currdata(f))
-
-audit_data = pd.DataFrame(fund_currlist)
-
-fund_hist_data = []
-for f in audit_list:
-    hist_data = get_fund_histdata(f)
-    # hist_data = hist_data.set_index('净值时间')
-    hist_data = hist_data.rename(columns={'累计净值': f})
-    if len(fund_hist_data) == 0 :
-        fund_hist_data = hist_data[['净值时间', f]]
-    else:
-        fund_hist_data = pd.merge(fund_hist_data, hist_data[['净值时间', f]], on='净值时间', how='outer')
-
-fund_hist_data = fund_hist_data.set_index('净值时间')
-
-equity = ts.get_today_all()
-# equity = ts.get_realtime_quotes(equity_list)
-equity = equity.ix[equity['code'].isin(list(equity_list))]
-# print(equity)
-
-# 发送邮件
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
-from email.header import Header
-
-# 邮件对象:
-msg = MIMEMultipart()
-msg['From'] = from_addr
-msg['Subject'] = Header(u'基金数据' + str(now_time), 'utf-8').encode()
-msg['To'] = ';'.join(to_addr)
-# 邮件正文是MIMEText:
-msg_text = u'主人，今天的基金及股票数据如下：\n' + '基金数据：\n' + audit_data.to_html(bold_rows=True, index=False) + '股票数据：\n' + equity.to_html(bold_rows=True, index=False).to_html(bold_rows=True)
-msg.attach(MIMEText(msg_text, 'html', 'utf-8'))
-
-
-# part = MIMEApplication(open('final_data.xlsx','rb').read())
-# part.add_header('Content-Disposition', 'attachment', filename=u"DA_data_alert.xlsx")
-# msg.attach(part)
-
-# msg = MIMEText('hello, send by Python...', 'plain', 'utf-8')
-# 输入Email地址和口令:
-# from_addr = raw_input('From: ')
-import smtplib
-server = smtplib.SMTP_SSL(smtp_server, 465)
-# server = smtplib.SMTP(smtp_server, 25) # SMTP协议默认端口是25
-server.set_debuglevel(1)
-server.login(from_addr, password)
-server.sendmail(from_addr, to_addr, msg.as_string())
-server.quit()
+    # data[['601899', 'SH000001']].plot()
+    # 改写列名增加股票名称
+    # data_new = data.copy()
+    # data_new.columns = list(map(lambda x: codes[x] + '-(' + x + ')', data_new.columns[:-1])) + ['上证指数-(SH000001)']
+    # data_new.to_excel('data.xlsx') # 原始股价
+    return data
