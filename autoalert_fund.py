@@ -55,7 +55,7 @@ def get_fund_currdata(fund_code):
     fund_data['delta_rate'] = delta_rate
     fund_data['fund_name'] = fund_name
     time = soup.find(id='gz_gztime').text
-    fund_data['time'] = time
+    fund_data['time'] = pd.to_datetime(time[1:-1], yearfirst=True)
     price = soup.find(id='gz_gsz').text
     fund_data['price'] = price
     fund_data['delta'] = float(price) - float(previous_value)
@@ -64,14 +64,47 @@ def get_fund_currdata(fund_code):
 
 
 fund_currlist = []
-
-for f in audit_list:
+for f in audit_list[fund_code_col]:
     fund_currlist.append(get_fund_currdata(f))
 
 audit_data = pd.DataFrame(fund_currlist)
 
+audit_data['date'] = audit_data['time'].map(lambda x: x.date())
+
+
+# 按照当日估价与昨日均线判断金叉和死叉
+def cal_dead_cross(row):
+    if row['type_pre'] != '上升通道':
+        return ''
+    elif row['raw'] < row['moving 20']:
+        return 'dead_cross_r_20'
+    elif row['raw'] < row['moving 10']:
+        return 'dead_cross_r_10'
+    elif row['raw'] < row['moving 5']:
+        return 'dead_cross_r_5'
+    else:
+        return ''
+
+
+def cal_gold_cross(row):
+    if row['raw'] != '下降通道':
+        return ''
+    elif row['raw'] > row['moving 20']:
+        return 'gold_cross_r_20'
+    elif row['raw'] > row['moving 10']:
+        return 'glod_cross_r_10'
+    elif row['raw'] > row['moving 5']:
+        return 'glod_cross_r_5'
+    else:
+        return ''
+
+
+date0 = max(audit_data['date'])
+
+# 应该把这些历史数据存起来，没必要每天都去抓取一次
 fund_hist_data = []
-for f in audit_list:
+fund_mv_data = []
+for f in audit_list[fund_code_col]:
     hist_data = get_fund_histdata(f)
     # hist_data = hist_data.set_index('净值时间')
     hist_data = hist_data.rename(columns={'累计净值': f})
@@ -79,12 +112,65 @@ for f in audit_list:
         fund_hist_data = hist_data[['净值时间', f]]
     else:
         fund_hist_data = pd.merge(fund_hist_data, hist_data[['净值时间', f]], on='净值时间', how='outer')
+    hist_data_raw = hist_data[['净值时间', f]]
+    hist_data_raw['净值时间'] = pd.to_datetime(hist_data_raw['净值时间']).map(lambda x: x.date())
+    hist_data_raw = hist_data_raw.set_index('净值时间')
+    # 指定时间列
+    hist_data_raw.columns.name = 'day'
+    # 时间升序
+    hist_data_raw = hist_data_raw.sort_index()
+    # 只取最近20天
+    hist_data_raw = hist_data_raw[f]
 
-fund_hist_data = fund_hist_data.set_index('净值时间')
+    if not date0 in list(hist_data_raw.index):
+        # 把当天的实时数据放进去
+        hist_data_raw[date0] = audit_data.loc[audit_data['fund_code']==f]['price'].values[0]
+    hist_data_mv5 = hist_data_raw.rolling(window=5).mean().shift(1)
+    hist_data_mv10 = hist_data_raw.rolling(window=10).mean().shift(1)
+    hist_data_mv20 = hist_data_raw.rolling(window=20).mean().shift(1)
+    moving_mean_data = pd.DataFrame({'raw': hist_data_raw[-21:], 'moving 5': hist_data_mv5[-21:], 'moving 10': hist_data_mv10[-21:], 'moving 20': hist_data_mv20[-21:]})
+    moving_mean_data['code'] = f
+    moving_mean_data['raw>mv5'] = moving_mean_data['raw'] > moving_mean_data['moving 5']
+    moving_mean_data['mv5>mv10'] = moving_mean_data['moving 5'] > moving_mean_data['moving 10']
+    moving_mean_data['mv10>mv20'] = moving_mean_data['moving 10'] > moving_mean_data['moving 20']
+    moving_mean_data['type'] = '调整'
+    moving_mean_data['type'].loc[moving_mean_data['raw>mv5'] & moving_mean_data['mv5>mv10'] & moving_mean_data['mv10>mv20']] = '上升通道'
+    moving_mean_data['type'].loc[~moving_mean_data['raw>mv5'] & ~moving_mean_data['mv5>mv10'] & ~moving_mean_data['mv10>mv20']] = '下降通道'
+    moving_mean_data['type_pre'] = moving_mean_data['type'].shift(1)
+    moving_mean_data['dead_cross'] = moving_mean_data.apply(cal_dead_cross, axis=1)
+    moving_mean_data['gold_cross'] = moving_mean_data.apply(cal_gold_cross, axis=1)
+    moving_mean_data['name'] = audit_list[audit_list['fund_code']==f]['fund_name'].values[0]
+    fund_mv_data.append(moving_mean_data)
+    # fig = moving_mean_data.plot()
+    # fig[0].get_figur().savefig( f +'.jpg')
+
+fund_mv_data = pd.concat(fund_mv_data)
+
+action = ''
+current_action = fund_mv_data.loc[date0]
+for i, row in current_action.iterrows():
+    if len(row['dead_cross']) > 0:
+        if row['dead_cross'] == 'dead_cross_r_5':
+            action += '%s : %s 实时价格高于5日均线，可以考虑卖出 \n </p>' % (row['name'], row['code'])
+        elif row['dead_cross'] == 'dead_cross_r_10':
+            action += '%s : %s 实时价格高于10日均线，建议卖出 \n </p>' % (row['name'], row['code'])
+        elif row['dead_cross'] == 'dead_cross_r_20':
+            action += '%s : %s 实时价格高于20日均线，强烈建议卖出 \n </p>' % (row['name'], row['code'])
+    elif len(row['gold_cross']) > 0:
+        if row['gold_cross'] == 'gold_cross_r_5':
+            action += '%s : %s 实时价格低于5日均线，可以考虑买入 \n </p>' % (row['name'], row['code'])
+        elif row['gold_cross'] == 'gold_cross_r_10':
+            action += '%s : %s 实时价格低于10日均线，建议买入 \n </p>' % (row['name'], row['code'])
+        elif row['gold_cross'] == 'gold_cross_r_20':
+            action += '%s : %s 实时价格低于20日均线，强烈建议买入 \n </p>' % (row['name'], row['code'])
+    else:
+        action += '%s : %s 建议观望 \n </p>' % (row['name'], row['code'])
+
+
 
 equity = ts.get_today_all()
 # equity = ts.get_realtime_quotes(equity_list)
-equity = equity.ix[equity['code'].isin(list(equity_list))]
+equity = equity.loc[equity['code'].isin(list(equity_list))]
 # print(equity)
 
 # 发送邮件
@@ -99,8 +185,10 @@ msg['From'] = from_addr
 msg['Subject'] = Header(u'基金数据' + str(now_time), 'utf-8').encode()
 msg['To'] = ';'.join(to_addr)
 # 邮件正文是MIMEText:
-msg_text = u'主人，今天的基金及股票数据如下：\n' + '基金数据：\n' + audit_data.to_html(bold_rows=True, index=False) + '股票数据：\n' + equity.to_html(bold_rows=True, index=False).to_html(bold_rows=True)
-msg.attach(MIMEText(msg_text, 'html', 'utf-8'))
+msg_text = u'主人，今天的基金及股票数据如下：\n </p> -----基金实时数据-----：\n </p> %s \n </p>\
+    -----今日操作建议-----：\n </p> %s \n </p> -----股票实时数据-----：\n </p> %s \n </p> -----基金的历史数据-----：\n </p> %s \n </p> ' \
+     % (audit_data.to_html(bold_rows=True, index=False), action, equity.to_html(bold_rows=True, index=False), fund_mv_data.to_html(bold_rows=True))
+msg.attach(MIMEText(msg_text, 'html', 'utf-8')) 
 
 
 # part = MIMEApplication(open('final_data.xlsx','rb').read())
