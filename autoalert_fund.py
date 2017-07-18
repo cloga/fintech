@@ -107,7 +107,9 @@ fund_mv_data = []
 for f in audit_list[fund_code_col]:
     hist_data = get_fund_histdata(f)
     # hist_data = hist_data.set_index('净值时间')
-    hist_data = hist_data.rename(columns={'累计净值': f})
+    # 需要使用单位净值
+    hist_data = hist_data.rename(columns={'单位净值': f})
+    # hist_data = hist_data.rename(columns={'累计净值': f})
     if len(fund_hist_data) == 0 :
         fund_hist_data = hist_data[['净值时间', f]]
     else:
@@ -124,7 +126,8 @@ for f in audit_list[fund_code_col]:
 
     if not date0 in list(hist_data_raw.index):
         # 把当天的实时数据放进去
-        hist_data_raw[date0] = audit_data.loc[audit_data['fund_code']==f]['price'].values[0]
+        hist_data_raw[date0] = float(audit_data.loc[audit_data['fund_code']==f]['price'].values[0])
+    # 使用包含自身的，因为上升通道中，包含自身相对来说得出的20日均线会比较大，相对保守些
     hist_data_mv5 = hist_data_raw.rolling(window=5).mean().shift(1)
     hist_data_mv10 = hist_data_raw.rolling(window=10).mean().shift(1)
     hist_data_mv20 = hist_data_raw.rolling(window=20).mean().shift(1)
@@ -151,20 +154,20 @@ current_action = fund_mv_data.loc[date0]
 for i, row in current_action.iterrows():
     if len(row['dead_cross']) > 0:
         if row['dead_cross'] == 'dead_cross_r_5':
-            action += '%s : %s 实时价格高于5日均线，可以考虑卖出 \n </p>' % (row['name'], row['code'])
+            action += '%s : %s ，今天的状态是：%s ，实时价格低于5日均线，可以考虑卖出 \n </p>' % (row['name'], row['code'], row['type'])
         elif row['dead_cross'] == 'dead_cross_r_10':
-            action += '%s : %s 实时价格高于10日均线，建议卖出 \n </p>' % (row['name'], row['code'])
+            action += '%s : %s ，今天的状态是：%s ，实时价格低于10日均线，建议卖出 \n </p>' % (row['name'], row['code'], row['type'])
         elif row['dead_cross'] == 'dead_cross_r_20':
-            action += '%s : %s 实时价格高于20日均线，强烈建议卖出 \n </p>' % (row['name'], row['code'])
+            action += '%s : %s ，今天的状态是：%s ，实时价格低于20日均线，强烈建议卖出 \n </p>' % (row['name'], row['code'], row['type'])
     elif len(row['gold_cross']) > 0:
         if row['gold_cross'] == 'gold_cross_r_5':
-            action += '%s : %s 实时价格低于5日均线，可以考虑买入 \n </p>' % (row['name'], row['code'])
+            action += '%s : %s ，今天的状态是：%s ，实时价格高于5日均线，可以考虑买入 \n </p>' % (row['name'], row['code'], row['type'])
         elif row['gold_cross'] == 'gold_cross_r_10':
-            action += '%s : %s 实时价格低于10日均线，建议买入 \n </p>' % (row['name'], row['code'])
+            action += '%s : %s ，今天的状态是：%s ，实时价格高于10日均线，建议买入 \n </p>' % (row['name'], row['code'], row['type'])
         elif row['gold_cross'] == 'gold_cross_r_20':
-            action += '%s : %s 实时价格低于20日均线，强烈建议买入 \n </p>' % (row['name'], row['code'])
+            action += '%s : %s ，今天的状态是：%s ，实时价格高于20日均线，强烈建议买入 \n </p>' % (row['name'], row['code'], row['type'])
     else:
-        action += '%s : %s 建议观望 \n </p>' % (row['name'], row['code'])
+        action += '%s : %s ，今天的状态是：%s ，建议观望 \n </p>' % (row['name'], row['code'], row['type'])
 
 
 
@@ -186,7 +189,7 @@ msg['Subject'] = Header(u'基金数据' + str(now_time), 'utf-8').encode()
 msg['To'] = ';'.join(to_addr)
 # 邮件正文是MIMEText:
 msg_text = u'主人，今天的基金及股票数据如下：\n </p> -----基金实时数据-----：\n </p> %s \n </p>\
-    -----今日操作建议-----：\n </p> %s \n </p> -----股票实时数据-----：\n </p> %s \n </p> -----基金的历史数据-----：\n </p> %s \n </p> ' \
+    -----今日操作建议(根据道式移动均线的金叉死叉)-----：\n </p> %s \n </p> -----股票实时数据-----：\n </p> %s \n </p> -----基金的历史数据-----：\n </p> %s \n </p> ' \
      % (audit_data.to_html(bold_rows=True, index=False), action, equity.to_html(bold_rows=True, index=False), fund_mv_data.to_html(bold_rows=True))
 msg.attach(MIMEText(msg_text, 'html', 'utf-8')) 
 
