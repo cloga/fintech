@@ -1,0 +1,138 @@
+{% extends "basic.html" %}
+{% block title %}{{title}}{% endblock %}
+{% block styles %}
+{{super()}}
+  <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-table/1.11.1/bootstrap-table.min.css">
+    <style type='text/css'>
+    .row-index {
+      width: 50px;
+      display: inline-block;
+    }
+  </style>
+{% endblock %}
+{% block scripts %}
+{{super()}}
+
+<!-- bootstrap+jquery -->
+  <script
+  src="https://code.jquery.com/jquery-2.2.4.min.js"
+  integrity="sha256-BbhdlvQf/xTY9gja0Dq3HiwQF8LaCRTXxZKRutelT44="
+  crossorigin="anonymous"></script>
+
+    <!-- bootstrap-table -->
+  <script type='text/javascript' src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-table/1.11.1/bootstrap-table.min.js">
+</script>
+<script src="/static/js/bootstrap-table-export.js"></script>
+
+<!-- bootstrap table 导出-->
+<script src="https://cdn.bootcss.com/FileSaver.js/2014-11-29/FileSaver.min.js"></script>
+<script src="/static/js/xlsx.core.min.js"></script>
+<script src="/static/js/tableExport.js"></script>
+<script>
+    var $table = $('#table');
+    $(function () {
+        $('#toolbar').find('select').change(function () {
+            $table.bootstrapTable('destroy').bootstrapTable({
+                exportDataType: $(this).val()
+            });
+        });
+    })
+</script>
+
+  <script type='text/javascript'>
+    $(window).load(function(){
+      var real_data = {{real_data|tojson}};
+      var hist_data = {{hist_data|tojson}};
+      var basic_data = {{basic_data|tojson}};
+      var hist_data_columns = {{hist_data_columns|tojson}};
+      var real_data_columns = {{real_data_columns|tojson}};
+      var basic_data_columns = {{basic_data_columns|tojson}};
+      $(function() {
+        $('#basic_data').bootstrapTable({ 
+//           data: real_data,
+          url: basic_data, 
+          columns: basic_data_columns, 
+          exportTypes: ['json', 'csv', 'txt', 'excel'],
+            exportDataType: 'all'
+        });
+
+        $('#table_real_time').bootstrapTable({ 
+//           data: real_data,
+          url: real_data, 
+          columns: real_data_columns, 
+          exportTypes: ['json', 'csv', 'txt', 'excel'],
+            exportDataType: 'all'
+        });
+        
+        $('#table').bootstrapTable({ 
+          data: hist_data,
+          columns: hist_data_columns, 
+          exportTypes: ['json', 'csv', 'txt', 'excel'],
+            exportDataType: 'all'
+        });
+      });
+
+    });
+(function(){
+    function refreshTable() {$('#table_real_time').bootstrapTable('refresh', {silent: true});}
+    setInterval(refreshTable, 5000);
+})()
+  </script>
+{% endblock %}
+
+{% block content %}
+    <h1>{{title}}</h1>
+<div class="container" style="padding: 10px; ">
+    基本面数据<br/>
+    <div id="toolbar"></div>
+    <table
+      id="basic_data"
+      data-toggle="true"
+      data-toolbar="#toolbar"
+      data-search="false"
+      data-show-columns="false"
+      data-show-export="false"
+      data-pagination="false"
+      data-click-to-select="true"
+      data-height="100">
+    </table>
+  </div>
+<div class="container" style="padding: 10px; ">
+      实时数据<br/>
+    <div id="toolbar"></div>
+    <table
+      id="table_real_time"
+      data-toggle="true"
+      data-toolbar="#toolbar"
+      data-search="false"
+      data-show-columns="false"
+      data-show-export="false"
+      data-pagination="false"
+      data-click-to-select="true"
+      data-height="100">
+    </table>
+  </div>
+
+
+    {% for jsfile_name in grid_script_list %}
+    <script src="{{ host }}/{{ jsfile_name }}.js"></script>
+    {% endfor %}
+    {{ grid|safe }}  
+
+  <div class="container" style="padding: 10px; ">
+    历史数据<br/>
+    <div id="toolbar"></div>
+    <table
+      id="table"
+      data-toggle="true"
+      data-toolbar="#toolbar"
+      data-search="true"
+      data-show-columns="true"
+      data-show-export="true"
+      data-pagination="true"
+      data-click-to-select="true"
+      data-height="500">
+    </table>
+  </div>
+{% endblock %}
+

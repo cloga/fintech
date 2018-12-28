@@ -1,0 +1,8 @@
+{% extends "basic.html" %}
+{% block title %}Proudly presented by ECharts{% endblock %}
+{% block content %}
+    {% for jsfile_name in script_list %}
+        <script src="{{ host }}/{{ jsfile_name }}.js"></script>
+    {% endfor %}
+  {{ myechart|safe }}
+{% endblock %}
